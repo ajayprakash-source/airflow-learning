@@ -4,13 +4,13 @@ from airflow import DAG
 from airflow.decorators import task
 from airflow.utils.log.logging_mixin import LoggingMixin
 
-from dags.configs.constants import (
+from configs.constants import (
     DAG_ID,
     DEFAULT_RETRIES,
     INPUT_BUCKET,
     RETRY_DELAY_MINUTES,
 )
-from dags.utils.aws import list_objects
+from utils.aws import list_objects
 
 logger = LoggingMixin().log
 

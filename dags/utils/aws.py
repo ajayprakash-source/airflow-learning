@@ -7,7 +7,7 @@ modules remain clean and focused on orchestration.
 
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 
-from dags.configs.constants import AWS_CONN_ID
+from configs.constants import AWS_CONN_ID
 
 
 def list_objects(bucket_name: str) -> list[str]:
