@@ -18,3 +18,9 @@ DAG_ID = "production_sales_pipeline"
 # Default Retry Configuration
 DEFAULT_RETRIES = 2
 RETRY_DELAY_MINUTES = 5
+
+INPUT_FILE = "sales_july.csv"
+
+SENSOR_TIMEOUT = 600
+
+SENSOR_POKE_INTERVAL = 30
