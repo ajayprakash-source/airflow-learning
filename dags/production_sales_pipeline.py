@@ -14,8 +14,11 @@ from configs.constants import (
     INPUT_FILE,
     SENSOR_TIMEOUT,
     SENSOR_POKE_INTERVAL,
+    LOCAL_DOWNLOAD_PATH,
 )
+
 from utils.aws import list_objects
+from tasks.load import download_sales_file
 
 logger = LoggingMixin().log
 
@@ -35,9 +38,9 @@ with DAG(
     tags=["production", "aws", "s3"],
 ):
 
-    # -------------------------------------------------------------------------
-    # Wait until the expected sales file arrives in S3
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Wait until the required file arrives
+    # ------------------------------------------------------------------
     wait_for_sales_file = S3KeySensor(
         task_id="wait_for_sales_file",
         bucket_name=INPUT_BUCKET,
@@ -48,11 +51,26 @@ with DAG(
         mode="reschedule",
     )
 
-    # -------------------------------------------------------------------------
-    # List files available in the bucket
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Download file from S3
+    # ------------------------------------------------------------------
+    @task
+    def download_file():
+
+        downloaded_file = download_sales_file(
+            bucket_name=INPUT_BUCKET,
+            object_key=INPUT_FILE,
+            local_path=LOCAL_DOWNLOAD_PATH,
+        )
+
+        return downloaded_file
+
+    # ------------------------------------------------------------------
+    # List bucket contents (temporary verification task)
+    # ------------------------------------------------------------------
     @task
     def list_sales_files():
+
         logger.info("Listing objects in bucket: %s", INPUT_BUCKET)
 
         objects = list_objects(INPUT_BUCKET)
@@ -64,6 +82,8 @@ with DAG(
 
         return objects
 
-    list_files = list_sales_files()
+    download_task = download_file()
 
-    wait_for_sales_file >> list_files
+    list_task = list_sales_files()
+
+    wait_for_sales_file >> download_task >> list_task
