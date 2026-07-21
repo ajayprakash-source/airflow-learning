@@ -17,8 +17,8 @@ from configs.constants import (
     LOCAL_DOWNLOAD_PATH,
 )
 
-from utils.aws import list_objects
 from tasks.load import download_sales_file
+from tasks.validation import validate_sales_file
 
 logger = LoggingMixin().log
 
@@ -35,11 +35,11 @@ with DAG(
     schedule=None,
     catchup=False,
     default_args=default_args,
-    tags=["production", "aws", "s3"],
+    tags=["production", "aws", "etl"],
 ):
 
     # ------------------------------------------------------------------
-    # Wait until the required file arrives
+    # Wait until the expected sales file arrives in S3
     # ------------------------------------------------------------------
     wait_for_sales_file = S3KeySensor(
         task_id="wait_for_sales_file",
@@ -52,38 +52,28 @@ with DAG(
     )
 
     # ------------------------------------------------------------------
-    # Download file from S3
+    # Download the sales file from S3
     # ------------------------------------------------------------------
     @task
-    def download_file():
-
-        downloaded_file = download_sales_file(
+    def download_file() -> str:
+        return download_sales_file(
             bucket_name=INPUT_BUCKET,
             object_key=INPUT_FILE,
-            local_path=LOCAL_DOWNLOAD_PATH,
+            download_directory=LOCAL_DOWNLOAD_PATH,
         )
 
-        return downloaded_file
-
     # ------------------------------------------------------------------
-    # List bucket contents (temporary verification task)
+    # Validate the downloaded CSV
     # ------------------------------------------------------------------
     @task
-    def list_sales_files():
+    def validate_file(file_path: str) -> str:
+        return validate_sales_file(file_path)
 
-        logger.info("Listing objects in bucket: %s", INPUT_BUCKET)
+    # ------------------------------------------------------------------
+    # Task Dependencies
+    # ------------------------------------------------------------------
+    downloaded_file = download_file()
 
-        objects = list_objects(INPUT_BUCKET)
+    validated_file = validate_file(downloaded_file)
 
-        logger.info("Found %d object(s)", len(objects))
-
-        for obj in objects:
-            logger.info("Object: %s", obj)
-
-        return objects
-
-    download_task = download_file()
-
-    list_task = list_sales_files()
-
-    wait_for_sales_file >> download_task >> list_task
+    wait_for_sales_file >> downloaded_file >> validated_file
