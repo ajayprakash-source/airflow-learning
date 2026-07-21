@@ -4,6 +4,7 @@ from airflow import DAG
 from airflow.decorators import task
 from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
 from airflow.utils.log.logging_mixin import LoggingMixin
+from tasks.transformation import transform_sales_file
 
 from configs.constants import (
     DAG_ID,
@@ -68,7 +69,10 @@ with DAG(
     @task
     def validate_file(file_path: str) -> str:
         return validate_sales_file(file_path)
-
+    
+    @task
+    def transform_file(file_path: str) -> str:
+        return transform_sales_file(file_path)
     # ------------------------------------------------------------------
     # Task Dependencies
     # ------------------------------------------------------------------
@@ -76,4 +80,6 @@ with DAG(
 
     validated_file = validate_file(downloaded_file)
 
-    wait_for_sales_file >> downloaded_file >> validated_file
+    processed_file = transform_file(validated_file)
+
+    wait_for_sales_file >> downloaded_file >> validated_file >> processed_file
