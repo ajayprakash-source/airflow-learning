@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from airflow import DAG
 from airflow.decorators import task
 from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
 from airflow.utils.log.logging_mixin import LoggingMixin
-from tasks.transformation import transform_sales_file
 
 from configs.constants import (
     DAG_ID,
@@ -16,10 +16,15 @@ from configs.constants import (
     SENSOR_TIMEOUT,
     SENSOR_POKE_INTERVAL,
     LOCAL_DOWNLOAD_PATH,
+    PROCESSED_PREFIX,
 )
 
-from tasks.load import download_sales_file
+from tasks.load import (
+    download_sales_file,
+    upload_processed_file,
+)
 from tasks.validation import validate_sales_file
+from tasks.transformation import transform_sales_file
 
 logger = LoggingMixin().log
 
@@ -69,10 +74,31 @@ with DAG(
     @task
     def validate_file(file_path: str) -> str:
         return validate_sales_file(file_path)
-    
+
+    # ------------------------------------------------------------------
+    # Transform the validated CSV
+    # ------------------------------------------------------------------
     @task
     def transform_file(file_path: str) -> str:
         return transform_sales_file(file_path)
+
+    # ------------------------------------------------------------------
+    # Upload the processed CSV back to S3
+    # ------------------------------------------------------------------
+    @task
+    def upload_file(processed_file: str) -> str:
+
+        object_key = (
+            PROCESSED_PREFIX
+            + Path(processed_file).name
+        )
+
+        return upload_processed_file(
+            local_file_path=processed_file,
+            bucket_name=INPUT_BUCKET,
+            object_key=object_key,
+        )
+
     # ------------------------------------------------------------------
     # Task Dependencies
     # ------------------------------------------------------------------
@@ -82,4 +108,12 @@ with DAG(
 
     processed_file = transform_file(validated_file)
 
-    wait_for_sales_file >> downloaded_file >> validated_file >> processed_file
+    uploaded_file = upload_file(processed_file)
+
+    (
+        wait_for_sales_file
+        >> downloaded_file
+        >> validated_file
+        >> processed_file
+        >> uploaded_file
+    )
