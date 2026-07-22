@@ -1,6 +1,8 @@
 import os
+import time
 
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+from airflow.sdk.observability.stats import Stats
 from airflow.utils.log.logging_mixin import LoggingMixin
 
 from configs.constants import AWS_CONN_ID
@@ -15,47 +17,51 @@ def download_sales_file(
 ) -> str:
     """
     Download a file from S3.
-
-    Parameters
-    ----------
-    bucket_name : str
-        Name of the S3 bucket.
-    object_key : str
-        Object key in S3.
-    download_directory : str
-        Local directory where the file will be downloaded.
-
-    Returns
-    -------
-    str
-        Absolute path of the downloaded file.
     """
 
-    hook = S3Hook(aws_conn_id=AWS_CONN_ID)
+    start_time = time.time()
 
-    logger.info(
-        "Downloading %s from bucket %s",
-        object_key,
-        bucket_name,
-    )
+    try:
+        hook = S3Hook(aws_conn_id=AWS_CONN_ID)
 
-    downloaded_file = hook.download_file(
-        key=object_key,
-        bucket_name=bucket_name,
-        local_path=download_directory,
-        preserve_file_name=True,
-    )
+        logger.info(
+            "Downloading %s from bucket %s",
+            object_key,
+            bucket_name,
+        )
 
-    # Some provider versions return only the filename,
-    # while others return the absolute path.
-    if os.path.isabs(downloaded_file):
-        full_path = downloaded_file
-    else:
-        full_path = os.path.join(download_directory, downloaded_file)
+        downloaded_file = hook.download_file(
+            key=object_key,
+            bucket_name=bucket_name,
+            local_path=download_directory,
+            preserve_file_name=True,
+        )
 
-    logger.info("Downloaded file: %s", full_path)
+        if os.path.isabs(downloaded_file):
+            full_path = downloaded_file
+        else:
+            full_path = os.path.join(
+                download_directory,
+                downloaded_file,
+            )
 
-    return full_path
+        logger.info("Downloaded file: %s", full_path)
+
+        Stats.incr("sales_pipeline.download.success")
+
+        return full_path
+
+    except Exception:
+        Stats.incr("sales_pipeline.download.failed")
+        raise
+
+    finally:
+        elapsed_ms = int((time.time() - start_time) * 1000)
+
+        Stats.timing(
+            "sales_pipeline.download.time_ms",
+            elapsed_ms,
+        )
 
 
 def upload_processed_file(
@@ -65,40 +71,45 @@ def upload_processed_file(
 ) -> str:
     """
     Upload a processed file to S3.
-
-    Parameters
-    ----------
-    local_file_path : str
-        Local path of the processed file.
-    bucket_name : str
-        Destination S3 bucket.
-    object_key : str
-        Destination object key.
-
-    Returns
-    -------
-    str
-        Uploaded S3 object key.
     """
 
-    hook = S3Hook(aws_conn_id=AWS_CONN_ID)
+    start_time = time.time()
 
-    logger.info(
-        "Uploading %s to s3://%s/%s",
-        local_file_path,
-        bucket_name,
-        object_key,
-    )
+    try:
+        hook = S3Hook(aws_conn_id=AWS_CONN_ID)
 
-    hook.load_file(
-        filename=local_file_path,
-        key=object_key,
-        bucket_name=bucket_name,
-        replace=True,
-    )
+        logger.info(
+            "Uploading %s to s3://%s/%s",
+            local_file_path,
+            bucket_name,
+            object_key,
+        )
 
-    logger.info(
-        "Upload completed successfully."
-    )
+        hook.load_file(
+            filename=local_file_path,
+            key=object_key,
+            bucket_name=bucket_name,
+            replace=True,
+        )
 
-    return object_key
+        logger.info(
+            "Upload completed successfully."
+        )
+
+        # Business metrics
+        Stats.incr("sales_pipeline.upload.success")
+        Stats.incr("sales_pipeline.files.processed")
+
+        return object_key
+
+    except Exception:
+        Stats.incr("sales_pipeline.upload.failed")
+        raise
+
+    finally:
+        elapsed_ms = int((time.time() - start_time) * 1000)
+
+        Stats.timing(
+            "sales_pipeline.upload.time_ms",
+            elapsed_ms,
+        )

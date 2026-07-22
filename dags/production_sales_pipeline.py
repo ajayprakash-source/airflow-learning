@@ -6,6 +6,11 @@ from airflow.decorators import task
 from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
 from airflow.utils.log.logging_mixin import LoggingMixin
 
+from callbacks import (
+    dag_success_callback,
+    dag_failure_callback,
+)
+
 from configs.constants import (
     DAG_ID,
     DEFAULT_RETRIES,
@@ -41,6 +46,8 @@ with DAG(
     schedule=None,
     catchup=False,
     default_args=default_args,
+    on_success_callback=dag_success_callback,
+    on_failure_callback=dag_failure_callback,
     tags=["production", "aws", "etl"],
 ):
 

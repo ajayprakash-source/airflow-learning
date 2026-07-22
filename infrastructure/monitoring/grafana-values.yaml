@@ -1,0 +1,13 @@
+adminUser: admin
+
+adminPassword: admin
+
+persistence:
+  enabled: true
+  storageClassName: local-path
+  accessModes:
+    - ReadWriteOnce
+  size: 5Gi
+
+initChownData:
+  enabled: false
